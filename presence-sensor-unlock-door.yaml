@@ -1,43 +1,37 @@
 blueprint:
-  name: Närvaro-baserad smartlås (dörr + garage) med input_boolean
+  name: Närvaro-baserad smartlås med auto-lås + input_boolean
   description: >
-    Upplåser ytterdörren vid närvaro. 
-    Auto-låser både ytterdörren och garaget när toggle är på.
+    Upplåser vid närvaro. Auto-låser vid ingen närvaro eller dörrstängning. 
+    Brytaren (input_boolean) styr bara auto-låsningen.
   domain: automation
   input:
     presence_sensor:
-      name: Närvarosensor (ytterdörr)
+      name: Närvarosensor
       selector:
         entity:
           domain: binary_sensor
 
-    front_door_lock:
-      name: Ytterdörrens smartlås
-      selector:
-        entity:
-          domain: lock
-
-    garage_lock:
-      name: Garagets smartlås
+    lock_entity:
+      name: Smartlås
       selector:
         entity:
           domain: lock
 
     door_contact:
-      name: Ytterdörrens kontakt (magnetbrytare)
+      name: Dörrkontakt (magnetbrytare)
       selector:
         entity:
           domain: binary_sensor
 
     enable_boolean:
-      name: Aktivera/avaktivera AUTO-LÅS
-      description: input_boolean som styr all auto-låsning.
+      name: Aktivera/avaktivera AUTO-LÅS (ej upplåsning)
+      description: input_boolean som styr auto-låsningen (upplåsning fungerar alltid).
       selector:
         entity:
           domain: input_boolean
 
     unlock_delay:
-      name: Fördröjning upplåsning ytterdörr (sek)
+      name: Fördröjning innan upplåsning (sek)
       default: 10
       selector:
         number:
@@ -55,7 +49,7 @@ blueprint:
           unit_of_measurement: seconds
 
     door_close_delay:
-      name: Fördröjning auto-lås efter ytterdörr stängs (sek)
+      name: Fördröjning efter dörr stängs (sek)
       default: 5
       selector:
         number:
@@ -63,28 +57,16 @@ blueprint:
           max: 60
           unit_of_measurement: seconds
 
-    garage_lock_delay:
-      name: Fördröjning auto-lås garage (sek)
-      description: Hur lång tid efter att garage är stängt + toggle på innan det låses.
-      default: 30
-      selector:
-        number:
-          min: 0
-          max: 300
-          unit_of_measurement: seconds
-
 mode: restart
 
 trigger:
-  # Ytterdörr – upplåsning
   - platform: state
     entity_id: !input presence_sensor
     to: "on"
     for:
       seconds: !input unlock_delay
-    id: "front_unlock"
+    id: "unlock"
 
-  # Ytterdörr – auto-lås ingen närvaro
   - platform: state
     entity_id: !input presence_sensor
     to: "off"
@@ -92,32 +74,25 @@ trigger:
       seconds: !input no_presence_delay
     id: "lock_no_presence"
 
-  # Ytterdörr – auto-lås vid stängning
   - platform: state
     entity_id: !input door_contact
     to: "off"
     for:
       seconds: !input door_close_delay
-    id: "front_door_closed"
-
-  # Garage – auto-lås när det är stängt och toggle är på
-  - platform: state
-    entity_id: !input garage_lock
-    to: "unlocked"
-    id: "garage_unlocked"
+    id: "lock_door_closed"
 
 action:
   - choose:
-      # Upplåsning ytterdörr (alltid)
+      # === UPPÅSNING (fungerar alltid) ===
       - conditions:
           - condition: trigger
-            id: "front_unlock"
+            id: "unlock"
         sequence:
           - service: lock.unlock
             target:
-              entity_id: !input front_door_lock
+              entity_id: !input lock_entity
 
-      # Auto-lås ytterdörr vid ingen närvaro
+      # === AUTO-LÅSNING (respekterar brytaren) ===
       - conditions:
           - condition: trigger
             id: "lock_no_presence"
@@ -127,33 +102,15 @@ action:
         sequence:
           - service: lock.lock
             target:
-              entity_id: !input front_door_lock
+              entity_id: !input lock_entity
 
-      # Auto-lås ytterdörr när den stängs
       - conditions:
           - condition: trigger
-            id: "front_door_closed"
+            id: "lock_door_closed"
           - condition: state
             entity_id: !input enable_boolean
             state: "on"
         sequence:
           - service: lock.lock
             target:
-              entity_id: !input front_door_lock
-
-      # Auto-lås garage när det är olåst + toggle på
-      - conditions:
-          - condition: trigger
-            id: "garage_unlocked"
-          - condition: state
-            entity_id: !input enable_boolean
-            state: "on"
-        sequence:
-          - delay:
-              seconds: !input garage_lock_delay
-          - condition: state
-            entity_id: !input garage_lock
-            state: "unlocked"   # dubbelkolla att det fortfarande är olåst
-          - service: lock.lock
-            target:
-              entity_id: !input garage_lock
+              entity_id: !input lock_entity
