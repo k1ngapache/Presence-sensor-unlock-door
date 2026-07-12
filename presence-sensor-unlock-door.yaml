@@ -1,8 +1,8 @@
 blueprint:
   name: Närvaro-baserad smartlås med auto-lås + input_boolean
   description: >
-    Låser upp efter närvaro. Auto-låser vid ingen närvaro eller när dörren stängs. 
-    Kan aktiveras/avaktiveras via en input_boolean (toggle) på dashboarden.
+    Upplåser vid närvaro. Auto-låser vid ingen närvaro eller dörrstängning. 
+    Brytaren (input_boolean) styr bara auto-låsningen.
   domain: automation
   input:
     presence_sensor:
@@ -24,8 +24,8 @@ blueprint:
           domain: binary_sensor
 
     enable_boolean:
-      name: Aktivera/avaktivera auto-lås
-      description: Välj en input_boolean (toggle helper) som du använder på dashboarden.
+      name: Aktivera/avaktivera AUTO-LÅS (ej upplåsning)
+      description: input_boolean som styr auto-låsningen (upplåsning fungerar alltid).
       selector:
         entity:
           domain: input_boolean
@@ -81,13 +81,9 @@ trigger:
       seconds: !input door_close_delay
     id: "lock_door_closed"
 
-condition:
-  - condition: state
-    entity_id: !input enable_boolean
-    state: "on"
-
 action:
   - choose:
+      # === UPPÅSNING (fungerar alltid) ===
       - conditions:
           - condition: trigger
             id: "unlock"
@@ -96,13 +92,14 @@ action:
             target:
               entity_id: !input lock_entity
 
+      # === AUTO-LÅSNING (respekterar brytaren) ===
       - conditions:
           - condition: trigger
             id: "lock_no_presence"
-        sequence:
           - condition: state
             entity_id: !input enable_boolean
             state: "on"
+        sequence:
           - service: lock.lock
             target:
               entity_id: !input lock_entity
@@ -110,10 +107,10 @@ action:
       - conditions:
           - condition: trigger
             id: "lock_door_closed"
-        sequence:
           - condition: state
             entity_id: !input enable_boolean
             state: "on"
+        sequence:
           - service: lock.lock
             target:
               entity_id: !input lock_entity
