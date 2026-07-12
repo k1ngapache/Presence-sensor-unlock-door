@@ -1,8 +1,8 @@
 blueprint:
-  name: Närvaro-baserad smartlås med auto-lås + manuell brytare
+  name: Närvaro-baserad smartlås med auto-lås + input_boolean
   description: >
     Låser upp efter närvaro. Auto-låser vid ingen närvaro eller när dörren stängs. 
-    Kan stängas av via en brytare på dashboarden.
+    Kan aktiveras/avaktiveras via en input_boolean (toggle) på dashboarden.
   domain: automation
   input:
     presence_sensor:
@@ -23,12 +23,12 @@ blueprint:
         entity:
           domain: binary_sensor
 
-    enable_switch:
+    enable_boolean:
       name: Aktivera/avaktivera auto-lås
-      description: Välj en "Toggle Helper" (switch) som du kan ha på dashboarden.
+      description: Välj en input_boolean (toggle helper) som du använder på dashboarden.
       selector:
         entity:
-          domain: switch
+          domain: input_boolean
 
     unlock_delay:
       name: Fördröjning innan upplåsning (sek)
@@ -82,9 +82,8 @@ trigger:
     id: "lock_door_closed"
 
 condition:
-  # Endast kör om brytaren är på
   - condition: state
-    entity_id: !input enable_switch
+    entity_id: !input enable_boolean
     state: "on"
 
 action:
@@ -100,10 +99,10 @@ action:
       - conditions:
           - condition: trigger
             id: "lock_no_presence"
-          - condition: state
-            entity_id: !input enable_switch
-            state: "on"
         sequence:
+          - condition: state
+            entity_id: !input enable_boolean
+            state: "on"
           - service: lock.lock
             target:
               entity_id: !input lock_entity
@@ -111,10 +110,10 @@ action:
       - conditions:
           - condition: trigger
             id: "lock_door_closed"
-          - condition: state
-            entity_id: !input enable_switch
-            state: "on"
         sequence:
+          - condition: state
+            entity_id: !input enable_boolean
+            state: "on"
           - service: lock.lock
             target:
               entity_id: !input lock_entity
