@@ -1,7 +1,8 @@
 blueprint:
   name: Närvaro-baserad smartlås med auto-lås
   description: >
-    Låser upp efter närvaro + auto-lås vid ingen närvaro eller när dörren stängs igen.
+    Låser upp dörren efter närvaro detekteras. 
+    Låser igen vid ingen närvaro eller när dörren stängs.
   domain: automation
   input:
     presence_sensor:
@@ -20,7 +21,7 @@ blueprint:
         entity:
           domain: binary_sensor
     unlock_delay:
-      name: Fördröjning upplåsning (sekunder)
+      name: Fördröjning innan upplåsning (sek)
       default: 10
       selector:
         number:
@@ -28,7 +29,7 @@ blueprint:
           max: 120
           unit_of_measurement: seconds
     no_presence_delay:
-      name: Fördröjning auto-lås ingen närvaro (sekunder)
+      name: Fördröjning auto-lås ingen närvaro (sek)
       default: 300
       selector:
         number:
@@ -36,7 +37,7 @@ blueprint:
           max: 1800
           unit_of_measurement: seconds
     door_close_delay:
-      name: Fördröjning efter dörr stängs (sekunder)
+      name: Fördröjning efter dörr stängs (sek)
       default: 5
       selector:
         number:
@@ -52,54 +53,46 @@ trigger:
     to: "on"
     for:
       seconds: !input unlock_delay
-    id: unlock
+    id: "unlock"
 
   - platform: state
     entity_id: !input presence_sensor
     to: "off"
     for:
       seconds: !input no_presence_delay
-    id: lock_no_presence
+    id: "lock_no_presence"
 
   - platform: state
     entity_id: !input door_contact
-    to: "off"   # closed
+    to: "off"  # closed
     for:
       seconds: !input door_close_delay
-    id: lock_door_closed
-
-condition:
-  - condition: template
-    value_template: >
-      {% set lock = states('{{ lock_entity }}') %}
-      {% set pres = states('{{ presence_sensor }}') %}
-      {{ lock not in ['unavailable', 'unknown'] and pres not in ['unavailable', 'unknown'] }}
+    id: "lock_door_closed"
 
 action:
-  - variables:
-      lock_entity: !input lock_entity
-      presence_sensor: !input presence_sensor
-
   - choose:
+      # Upplås vid närvaro
       - conditions:
           - condition: trigger
-            id: unlock
+            id: "unlock"
         sequence:
           - service: lock.unlock
             target:
               entity_id: !input lock_entity
 
+      # Lås vid ingen närvaro
       - conditions:
           - condition: trigger
-            id: lock_no_presence
+            id: "lock_no_presence"
         sequence:
           - service: lock.lock
             target:
               entity_id: !input lock_entity
 
+      # Lås när dörren stängs
       - conditions:
           - condition: trigger
-            id: lock_door_closed
+            id: "lock_door_closed"
         sequence:
           - service: lock.lock
             target:
