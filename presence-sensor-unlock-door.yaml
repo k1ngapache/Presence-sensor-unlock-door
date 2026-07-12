@@ -1,49 +1,42 @@
 blueprint:
   name: Närvaro-baserad smartlås med auto-lås
   description: >
-    Låser upp dörren efter närvaro detekteras (med fördröjning). 
-    Låser automatiskt om ingen närvaro längre känns av, eller när dörren öppnas och stängs igen.
+    Låser upp efter närvaro + auto-lås vid ingen närvaro eller när dörren stängs igen.
   domain: automation
   input:
     presence_sensor:
       name: Närvarosensor
-      description: Binary sensor som visar närvaro (t.ex. Aqara FP2 zone eller rörelsesensor).
       selector:
         entity:
           domain: binary_sensor
     lock_entity:
       name: Smartlås
-      description: Lock-entiteten för dörren.
       selector:
         entity:
           domain: lock
     door_contact:
-      name: Magnetbrytare / Dörrkontakt
-      description: Binary sensor för om dörren är öppen/stängd (door device_class rekommenderas).
+      name: Dörrkontakt (magnetbrytare)
       selector:
         entity:
           domain: binary_sensor
     unlock_delay:
-      name: Fördröjning innan upplåsning
-      description: Hur länge närvaro måste detekteras innan dörren låses upp.
+      name: Fördröjning upplåsning (sekunder)
       default: 10
       selector:
         number:
           min: 0
           max: 120
           unit_of_measurement: seconds
-    no_presence_lock_delay:
-      name: Fördröjning innan auto-lås vid ingen närvaro
-      description: Hur länge ingen närvaro måste vara innan dörren låses.
+    no_presence_delay:
+      name: Fördröjning auto-lås ingen närvaro (sekunder)
       default: 300
       selector:
         number:
           min: 30
           max: 1800
           unit_of_measurement: seconds
-    lock_on_door_close_delay:
-      name: Fördröjning efter dörr stängs
-      description: Kort fördröjning efter att dörren stängts innan den låses.
+    door_close_delay:
+      name: Fördröjning efter dörr stängs (sekunder)
       default: 5
       selector:
         number:
@@ -52,79 +45,62 @@ blueprint:
           unit_of_measurement: seconds
 
 mode: restart
-max_exceeded: silent
 
 trigger:
-  # Trigger 1: Närvaro detekteras → upplåsning efter fördröjning
   - platform: state
     entity_id: !input presence_sensor
     to: "on"
     for:
       seconds: !input unlock_delay
+    id: unlock
 
-  # Trigger 2: Ingen närvaro → auto-lås
   - platform: state
     entity_id: !input presence_sensor
     to: "off"
     for:
-      seconds: !input no_presence_lock_delay
+      seconds: !input no_presence_delay
+    id: lock_no_presence
 
-  # Trigger 3: Dörren stängs igen (efter att ha varit öppen)
   - platform: state
     entity_id: !input door_contact
-    to: "off"  # off = closed för de flesta dörrsensorer
+    to: "off"   # closed
     for:
-      seconds: !input lock_on_door_close_delay
+      seconds: !input door_close_delay
+    id: lock_door_closed
 
 condition:
-  # Grundläggande säkerhet: Lås bara om det inte redan är i rätt tillstånd
   - condition: template
     value_template: >
-      {% set lock_state = states(lock_entity) %}
-      {% set presence = states(!input presence_sensor) %}
-      {{ lock_state not in ['unavailable', 'unknown'] and presence not in ['unavailable', 'unknown'] }}
+      {% set lock = states('{{ lock_entity }}') %}
+      {% set pres = states('{{ presence_sensor }}') %}
+      {{ lock not in ['unavailable', 'unknown'] and pres not in ['unavailable', 'unknown'] }}
 
 action:
+  - variables:
+      lock_entity: !input lock_entity
+      presence_sensor: !input presence_sensor
+
   - choose:
-      # Upplåsning vid närvaro
       - conditions:
           - condition: trigger
-            id: 0  # Första triggern (närvaro on)
+            id: unlock
         sequence:
           - service: lock.unlock
             target:
               entity_id: !input lock_entity
-          - service: persistent_notification.create  # valfritt meddelande
-            data:
-              title: "Dörr upplåst"
-              message: "Närvaro detekterad – dörren har låsts upp."
 
-      # Auto-lås vid ingen närvaro
       - conditions:
           - condition: trigger
-            id: 1  # Andra triggern (närvaro off)
+            id: lock_no_presence
         sequence:
           - service: lock.lock
             target:
               entity_id: !input lock_entity
-          - service: persistent_notification.create
-            data:
-              title: "Dörr låst"
-              message: "Ingen närvaro längre – dörren har låsts automatiskt."
 
-      # Auto-lås när dörren stängs
       - conditions:
           - condition: trigger
-            id: 2  # Tredje triggern (dörr closed)
+            id: lock_door_closed
         sequence:
           - service: lock.lock
             target:
               entity_id: !input lock_entity
-          - service: persistent_notification.create
-            data:
-              title: "Dörr låst"
-              message: "Dörren stängdes – låst automatiskt."
-    default:
-      - service: lock.lock
-        target:
-          entity_id: !input lock_entity
